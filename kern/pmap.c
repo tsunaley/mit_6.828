@@ -102,8 +102,15 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
+	result = nextfree;
+	if (n>0){
+		nextfree = ROUNDUP(result+n, PGSIZE);
+		if (((uint32_t) nextfree - KERNBASE) > (npages * PGSIZE)) {
+        panic("boot_alloc: out of memory. Requested %uK, available %uK.\n", (uint32_t) nextfree / 1024, npages * PGSIZE / 1024);
+    	}
+	}
 
-	return NULL;
+	return result;
 }
 
 // Set up a two-level page table:
@@ -125,7 +132,7 @@ mem_init(void)
 	i386_detect_memory();
 
 	// Remove this line when you're ready to test this function.
-	panic("mem_init: This function is not finished\n");
+	// panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -148,7 +155,15 @@ mem_init(void)
 	// array.  'npages' is the number of physical pages in memory.  Use memset
 	// to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
-
+	
+	// for(int i=0;i<npages;i++){
+	// 	struct PageInfo *temp;
+	// 	memset(temp, 0, sizeof(struct PageInfo));
+	// 	pages[i] = *temp;
+	// }
+	uint32_t temp = npages*sizeof(struct PageInfo);
+	pages = (struct PageInfo*)boot_alloc(temp);
+	memset(pages, 0, temp);
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -161,6 +176,7 @@ mem_init(void)
 	check_page_free_list(1);
 	check_page_alloc();
 	check_page();
+	// panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// Now we set up virtual memory
@@ -173,6 +189,7 @@ mem_init(void)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
 
+	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U | PTE_P);
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
 	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
@@ -185,6 +202,7 @@ mem_init(void)
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
 
+	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
 	// Ie.  the VA range [KERNBASE, 2^32) should map to
@@ -194,6 +212,7 @@ mem_init(void)
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
 
+	boot_map_region(kern_pgdir, KERNBASE, 0xffffffff - KERNBASE, 0, PTE_W);
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
 
@@ -251,8 +270,20 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
-	size_t i;
-	for (i = 0; i < npages; i++) {
+
+	// size_t i;
+	// for (i = 0; i < npages; i++) {
+	// 	pages[i].pp_ref = 0;
+	// 	pages[i].pp_link = page_free_list;
+	// 	page_free_list = &pages[i];
+	// }
+	size_t npages_kernel_end = PADDR(boot_alloc(0)) / PGSIZE;
+	for(size_t i=0;i<npages;i++){
+		if(i==0||(i>=npages_basemem&&i<npages_kernel_end)){
+			pages[i].pp_ref = 1;
+			pages[i].pp_link = NULL;
+			continue;
+		}
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
@@ -275,7 +306,18 @@ struct PageInfo *
 page_alloc(int alloc_flags)
 {
 	// Fill this function in
-	return 0;
+	if(page_free_list==NULL) return NULL;
+
+	struct PageInfo * temp = page_free_list;
+	page_free_list = temp->pp_link;
+	// temp->pp_ref = 1;
+	temp->pp_link = NULL;
+	if(alloc_flags & ALLOC_ZERO){
+		void* addr = page2kva(temp);
+		memset(addr, 0, PGSIZE);
+	}
+	
+	return temp;
 }
 
 //
@@ -288,6 +330,9 @@ page_free(struct PageInfo *pp)
 	// Fill this function in
 	// Hint: You may want to panic if pp->pp_ref is nonzero or
 	// pp->pp_link is not NULL.
+	if(pp->pp_ref!=0||pp->pp_link!=NULL) panic("pp_ref is not 0 or pp_link not NULL");
+	pp->pp_link = page_free_list;
+	page_free_list = pp;
 }
 
 //
@@ -327,7 +372,26 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+	uintptr_t va_pdx = PDX(va);
+	uintptr_t va_ptx = PTX(va);
+
+	pde_t pde = pgdir[va_pdx];
+	if(!(pde&PTE_P)){ 
+		if(create){
+			struct PageInfo * new_page = page_alloc(ALLOC_ZERO);
+			if(new_page==NULL){
+				return NULL;
+			}
+			new_page->pp_ref++;
+			pgdir[va_pdx] = page2pa(new_page)|PTE_W|PTE_U|PTE_P;
+		}else{
+			return NULL;
+		}
+	}
+	physaddr_t pde_physa_addr = PTE_ADDR(pgdir[va_pdx]);
+	pte_t *pt_addr = (pte_t *)KADDR(pde_physa_addr);
+
+	return &pt_addr[va_ptx];
 }
 
 //
@@ -345,6 +409,16 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
 	// Fill this function in
+	uintptr_t va_offset = PGOFF(va);
+	size_t pgnum = size / PGSIZE;
+
+	for(int i=0;i<pgnum;i++){
+		pte_t * pte = pgdir_walk(pgdir, (void*)va, true);
+		*pte = pa|perm|PTE_P;
+		va += PGSIZE;
+		pa += PGSIZE;
+	}
+	
 }
 
 //
@@ -376,6 +450,19 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
+	pte_t * pte = pgdir_walk(pgdir, va, true);
+	if(!pte){
+		return -E_NO_MEM;
+	}
+	pp->pp_ref++;
+
+	if(*pte&PTE_P){
+		page_remove(pgdir, va);
+	}
+
+	physaddr_t pa = page2pa(pp);
+	*pte = pa|perm|PTE_P;
+
 	return 0;
 }
 
@@ -394,7 +481,19 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	pte_t * pte = pgdir_walk(pgdir, va, false);
+	if (pte == NULL) {
+		return NULL;
+	}
+	if (!(*pte) & PTE_P) {
+		return NULL;
+	}
+	if(pte_store){
+		*pte_store = pte;
+	}
+	physaddr_t pta = PTE_ADDR(*pte);
+
+	return pa2page(pta);
 }
 
 //
@@ -416,6 +515,14 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	pte_t * pte;
+	struct PageInfo *pg = page_lookup(pgdir, va, &pte);
+	if(!pg){
+		return;
+	}
+	page_decref(pg);
+	tlb_invalidate(pgdir, va);
+	*pte = 0;
 }
 
 //
