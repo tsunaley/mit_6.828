@@ -19,6 +19,8 @@ pde_t *kern_pgdir;		// Kernel's initial page directory
 struct PageInfo *pages;		// Physical page state array
 static struct PageInfo *page_free_list;	// Free list of physical pages
 
+struct Env *envs;		// All environments
+struct Env *curenv;		// Current environment
 
 // --------------------------------------------------------------
 // Detect machine's physical memory setup.
@@ -95,7 +97,7 @@ boot_alloc(uint32_t n)
 	// to any kernel code or global variables.
 	if (!nextfree) {
 		extern char end[];
-		nextfree = ROUNDUP((char *) end, PGSIZE);
+		nextfree = ROUNDUP((char *) end, PGSIZE) + PGSIZE;
 	}
 
 	// Allocate a chunk large enough to hold 'n' bytes, then update
@@ -169,6 +171,9 @@ mem_init(void)
 	//////////////////////////////////////////////////////////////////////
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
+	temp = NENV*sizeof(struct Env);
+	envs = (struct Env*)boot_alloc(temp);
+	memset(pages, 0, temp);	
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -202,6 +207,7 @@ mem_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
+	boot_map_region(kern_pgdir, UENVS, PTSIZE, PADDR(envs), PTE_U | PTE_P);
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -574,7 +580,25 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	uint32_t begin = (uint32_t) ROUNDDOWN(va, PGSIZE); 
+	uint32_t end = (uint32_t) ROUNDUP(va+len, PGSIZE); 
+	// uint32_t page_num = (end-begin)/PGSIZE;
 
+	pde_t *pg_dir = env->env_pgdir;
+	for(int i=begin;i<end;i+=PGSIZE){
+		pte_t *pte = pgdir_walk(pg_dir, (const void*)i, 0);
+		if(pte==NULL||i>=ULIM||!(*pte&PTE_P)||(*pte&perm)!=perm){
+			user_mem_check_addr = i < (uint32_t)va ? (uint32_t)va : i;
+			return -E_FAULT;
+		}
+		// pte_t *pt_addr = (pte_t*)KADDR(PTE_ADDR(pte));
+		// if(pt_addr>=ULIM){
+		// 	return -E_FAULT;
+		// }
+		// if((*pte)&perm){
+		// 	return -E_FAULT;
+		// }
+	}
 	return 0;
 }
 
