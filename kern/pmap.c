@@ -20,8 +20,8 @@ pde_t *kern_pgdir;		// Kernel's initial page directory
 struct PageInfo *pages;		// Physical page state array
 static struct PageInfo *page_free_list;	// Free list of physical pages
 
-struct Env *envs;		// All environments
-struct Env *curenv;		// Current environment
+// struct Env *envs;		// All environments
+// struct Env *curenv;		// Current environment
 
 // --------------------------------------------------------------
 // Detect machine's physical memory setup.
@@ -284,6 +284,10 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+	for(int i=0;i<NCPU;i++){
+		boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE - i * (KSTKSIZE + KSTKGAP), KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+	}
+
 
 }
 
@@ -332,7 +336,7 @@ page_init(void)
 	// }
 	size_t npages_kernel_end = PADDR(boot_alloc(0)) / PGSIZE;
 	for(size_t i=0;i<npages;i++){
-		if(i==0||(i>=npages_basemem&&i<npages_kernel_end)){
+		if(i==0||(i>=npages_basemem&&i<npages_kernel_end)||i==MPENTRY_PADDR/PGSIZE){
 			pages[i].pp_ref = 1;
 			pages[i].pp_link = NULL;
 			continue;
@@ -622,7 +626,15 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	size = ROUNDUP(size, PGSIZE);
+	// size_t end = ROUNDUP(pa+size, PGSIZE);
+	if(base+size>=MMIOLIM){
+		panic("mmio_map_region: out of mem!%d %u", size, pa);
+	}
+	boot_map_region(kern_pgdir, base, size, pa, PTE_PCD|PTE_PWT|PTE_W);
+	// panic("mmio_map_region not implemented");
+	base += size;
+	return (void *)(base-size);
 }
 
 static uintptr_t user_mem_check_addr;
