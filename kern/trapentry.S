@@ -47,10 +47,75 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+TRAPHANDLER_NOEC(th_divide, T_DIVIDE)
+TRAPHANDLER_NOEC(th_debug, T_DEBUG)//reserved
+TRAPHANDLER_NOEC(th_nmi, T_NMI)//reserved
+TRAPHANDLER_NOEC(th_brkpt, T_BRKPT)
+TRAPHANDLER_NOEC(th_oflow, T_OFLOW)
+TRAPHANDLER_NOEC(th_bound, T_BOUND)
+TRAPHANDLER_NOEC(th_illop, T_ILLOP)
+TRAPHANDLER_NOEC(th_device, T_DEVICE)
+TRAPHANDLER(th_dblflt, T_DBLFLT)
+TRAPHANDLER_NOEC(th9, 9)//reserved
+TRAPHANDLER(th_tss, T_TSS)
+TRAPHANDLER(th_segnp, T_SEGNP)
+TRAPHANDLER(th_stack, T_STACK)
+TRAPHANDLER(th_gpflt, T_GPFLT)
+TRAPHANDLER(th_pgflt, T_PGFLT)
+TRAPHANDLER_NOEC(th15, 15)//reserved
+TRAPHANDLER_NOEC(th_fperr, T_FPERR)
+TRAPHANDLER(th_align, T_ALIGN)
+TRAPHANDLER_NOEC(th_mchk, T_MCHK)
+TRAPHANDLER_NOEC(th_simderr, T_SIMDERR)
+TRAPHANDLER_NOEC(th_syscall, 48)
+
+TRAPHANDLER_NOEC(IRQ0, IRQ_OFFSET)
+TRAPHANDLER_NOEC(IRQ1, IRQ_OFFSET+1)
+TRAPHANDLER_NOEC(IRQ2, IRQ_OFFSET+2)
+TRAPHANDLER_NOEC(IRQ3, IRQ_OFFSET+3)
+TRAPHANDLER_NOEC(IRQ4, IRQ_OFFSET+4)
+TRAPHANDLER_NOEC(IRQ5, IRQ_OFFSET+5)
+TRAPHANDLER_NOEC(IRQ6, IRQ_OFFSET+6)
+TRAPHANDLER_NOEC(IRQ7, IRQ_OFFSET+7)
+TRAPHANDLER_NOEC(IRQ8, IRQ_OFFSET+8)
+TRAPHANDLER_NOEC(IRQ9, IRQ_OFFSET+9)
+TRAPHANDLER_NOEC(IRQ10, IRQ_OFFSET+10)
+TRAPHANDLER_NOEC(IRQ11, IRQ_OFFSET+11)
+TRAPHANDLER_NOEC(IRQ12, IRQ_OFFSET+12)
+TRAPHANDLER_NOEC(IRQ13, IRQ_OFFSET+13)
+TRAPHANDLER_NOEC(IRQ14, IRQ_OFFSET+14)
+TRAPHANDLER_NOEC(IRQ15, IRQ_OFFSET+15)
 
 
+/*TRAPHANDLER_NOEC(th_syscall, T_SYSCALL)*/
 
 /*
  * Lab 3: Your code here for _alltraps
  */
+
+ /*_alltraps:
+	pushl %ds;
+	pushl %es;
+	pushal;
+	movl $GD_KD, %eax;
+	movw %ax, %ds;
+	movw %ax, %es;
+	pushl %esp;
+	call trap;
+	popal;
+	popl %es;
+	popl %ds;
+	addl $8, %esp;
+	iret
+*/
+
+_alltraps:
+    pushl %ds
+    pushl %es
+    pushal
+    movw $GD_KD, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    pushl %esp
+    call trap
 
