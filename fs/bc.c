@@ -49,6 +49,13 @@ bc_pgfault(struct UTrapframe *utf)
 	//
 	// LAB 5: you code here:
 
+	//经过练习的提示，我们应该要页对齐然后再分配内存
+	addr=ROUNDDOWN(addr,PGSIZE);
+	if(sys_page_alloc(0,addr,PTE_SYSCALL)<0)panic("error page alloc"); //分配一个页
+	//分配完页之后，我们需要把磁盘里面的内容读出来，练习提示了我们 函数是按扇区来的
+	//而我们是按块来的，还有页，第blockno*8 个扇区，读8个扇区
+	ide_read(blockno*8,addr,8);//把页磁盘里面的值读出来 
+
 	// Clear the dirty bit for the disk block page since we just read the
 	// block from disk
 	if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0)
@@ -77,7 +84,11 @@ flush_block(void *addr)
 		panic("flush_block of bad va %08x", addr);
 
 	// LAB 5: Your code here.
-	panic("flush_block not implemented");
+	// panic("flush_block not implemented");
+	addr=ROUNDDOWN(addr,PGSIZE);//页对齐
+	if(!va_is_mapped(addr)||!va_is_dirty(addr))return ;//检查地址是不是已经映射了和修改  如果没有映射，或者是修改说明没有做任何改变，那么什么都不用做
+	ide_write(blockno*8,addr,8); //修改了就要写入
+	sys_page_map(0,addr,0,addr,PTE_SYSCALL);// 清楚修改标志
 }
 
 // Test that the block cache works, by smashing the superblock and

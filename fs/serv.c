@@ -214,7 +214,15 @@ serve_read(envid_t envid, union Fsipc *ipc)
 		cprintf("serve_read %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
 
 	// Lab 5: Your code here:
-	return 0;
+		int r=0;
+
+	struct OpenFile *o;
+	//openfile_lookup这个函数是查找 打开的文件
+	if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0)
+		return r;
+	r=file_read(o->o_file,ret,req->req_n,o->o_fd->fd_offset);
+	if(r>=0)o->o_fd->fd_offset+=r;
+	return r;
 }
 
 
@@ -229,7 +237,15 @@ serve_write(envid_t envid, struct Fsreq_write *req)
 		cprintf("serve_write %08x %08x %08x\n", envid, req->req_fileid, req->req_n);
 
 	// LAB 5: Your code here.
-	panic("serve_write not implemented");
+	// panic("serve_write not implemented");
+	int r=0;
+	struct OpenFile *o;
+	if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0)
+		return r;
+		//前面肯定一样的
+	r=file_write(o->o_file,req->req_buf,req->req_n,o->o_fd->fd_offset);//不同的就只有这，这调用的是file_write
+	if(r>=0)o->o_fd->fd_offset+=r;
+	return r;
 }
 
 // Stat ipc->stat.req_fileid.  Return the file's struct Stat to the

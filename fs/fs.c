@@ -62,7 +62,14 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
+	// panic("alloc_block not implemented");
+	for(int i=0;i<super->s_nblocks;i++){//直接暴力所有块
+		if(block_is_free(i)){ //检查是不是空闲
+			bitmap[i/32] ^= (1<<(i%32)); //不懂异或 的可以用  bitmap[i/32]&=~(1<<(i%32); 代替
+			flush_block(diskaddr(i));//刷新缓存。
+			return i;
+		}
+	}
 	return -E_NO_DISK;
 }
 
@@ -134,8 +141,31 @@ fs_init(void)
 static int
 file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
-       // LAB 5: Your code here.
-       panic("file_block_walk not implemented");
+    // LAB 5: Your code here.
+    // panic("file_block_walk not implemented");
+
+    //NDIRECT NINDIRECT 两个在fs.h 里面有定义
+	if(filebno>=NDIRECT+NINDIRECT)return -E_INVAL;//文件块数超出了最大值
+	if(filebno<NDIRECT){//如果在直接块里面 ，就直接返回地址
+		if(ppdiskbno){
+			*ppdiskbno=&f->f_direct[filebno];
+		}
+		return 0;
+	}
+	//如果没有在直接块里面，那么就只能在间接块里，然后我们怎么判断有没有间接块呢？？？
+	//在这个文件里面搜索 `f_indirectf`，发现在 file_truncate_blocks函数的前面
+	//有说明 f->f_indirect != 0代表没有 特么这个函数不告诉我，别问我经历了什么
+	if((f->f_indirect)==0){//判断没有间接块
+		if(alloc==0)return -E_NOT_FOUND;//没有设置分配位，就返回没有找到
+		int r=alloc_block();//分配一个块
+		if(r<=0)return -E_NO_DISK;
+		f->f_indirect=r;//间接快块号
+		memset(diskaddr(f->f_indirect), 0, BLKSIZE);//出事化为0
+		flush_block(diskaddr(f->f_indirect));//刷新缓存
+	}
+	if (ppdiskbno)//只是返回地址，没有具体的值。
+        *ppdiskbno = &((uint32_t *)diskaddr(f->f_indirect))[filebno-NDIRECT];//此时 *ppdiskbno 是块号
+	return 0;
 }
 
 // Set *blk to the address in memory where the filebno'th
@@ -149,8 +179,23 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 int
 file_get_block(struct File *f, uint32_t filebno, char **blk)
 {
-       // LAB 5: Your code here.
-       panic("file_get_block not implemented");
+    // LAB 5: Your code here.
+    // panic("file_get_block not implemented");
+    uint32_t *ppdiskbno,blockno;
+	int r=0; //首先得知道对应磁盘中的块号是多少，
+	//通过这个函数 ppdiskbno 就是指向对应磁盘块号的地址，也就是 *ppdiskbno 存的是块号。
+	if ((r = file_block_walk(f, filebno, &ppdiskbno, true)) < 0)
+        return r;
+    if ((*ppdiskbno)==0) {//块号是 0 说明还没有分配块
+        if ((r = alloc_block()) < 0)//分配一个块
+            return r;
+        blockno = r;
+        *ppdiskbno = blockno;//指向那个块
+        flush_block(diskaddr(*ppdiskbno));//刷新缓存
+    }
+    if (blk)
+        *blk = (char *)diskaddr(*ppdiskbno);//块号在磁盘中的地址 是 *blk存的是虚拟地址指针
+	return 0;
 }
 
 // Try to find a file named "name" in dir.  If so, set *file to it.
